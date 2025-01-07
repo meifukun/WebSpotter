@@ -1,8 +1,6 @@
 # %%
 import torch
 import os
-os.environ['http_proxy'] = 'socks5h://localhost:1080'
-os.environ['https_proxy'] = 'socks5h://localhost:1080'
 import sys
 import random
 import numpy as np
