@@ -19,13 +19,9 @@ def initialize_explanation_method(net, explain_method):
         net: The neural network model to be explained.
         explain_method (str): The explanation method to use. Supported methods include:
             - "integratedgradients(ig)": Uses integrated gradients to compute feature importance by accumulating gradients along a path.
-            - "deeplift": Tracks the contribution of each input feature by comparing activations to a reference.
-            - "lrp": Layer-wise relevance propagation, distributes the prediction back to the input features.
-            - "gradientshap": Combines gradients with Shapley values to estimate feature importance.
             - "kernelshap": Uses a kernel-based approximation of Shapley values to compute feature importance.
             - "lime": Fits a local interpretable model (e.g., linear) around the prediction to approximate feature importance.
             - "naivegradients(ng)": Computes feature importance directly using input gradients.
-            - "shapvalue": Uses Shapley Value Sampling to approximate feature importance based on cooperative game theory.
             - "lemna": Builds a local linear surrogate model tailored for security-related datasets.
             - "feature": Uses feature ablation by removing individual features and observing the impact on predictions.
 
@@ -39,14 +35,6 @@ def initialize_explanation_method(net, explain_method):
     if explain_method == "ig":
         # Setting multiply_by_inputs=True returns the product of the embedding features and their attribution scores
         lig = LayerIntegratedGradients(net, net.embedding,multiply_by_inputs=True)
-    elif explain_method == "deeplift":
-        lig = LayerDeepLift(net, net.embedding)
-    elif explain_method == "lrp":
-        interpretable_emb = configure_interpretable_embedding_layer(net, 'embedding')
-        lig = LRP(net)
-    elif explain_method == "gradientshap":
-        interpretable_emb = configure_interpretable_embedding_layer(net, 'embedding')
-        lig = GradientShap(net)
     elif explain_method == "kernelshap":
         interpretable_emb = configure_interpretable_embedding_layer(net, 'embedding')
         lig = KernelShap(net)
@@ -56,9 +44,6 @@ def initialize_explanation_method(net, explain_method):
     elif explain_method == "ng":
         interpretable_emb = configure_interpretable_embedding_layer(net, 'embedding')
         lig = Saliency(net)
-    elif explain_method == "shapvalue":
-        interpretable_emb = configure_interpretable_embedding_layer(net, 'embedding')
-        lig = ShapleyValueSampling(net)
     elif explain_method == "lemna":
         interpretable_emb = configure_interpretable_embedding_layer(net, 'embedding')
         lig = Lime(net, interpretable_model = LemnaModel())
@@ -202,22 +187,6 @@ def perform_explanation(net, input_data, explain_method, lig, interpretable_emb,
         attributions = lig.attribute(input_data, target=pred_label,n_steps=50)
         attributions = attributions.squeeze(0)
         embedded_input = net.embedding(input_data)
-    elif explain_method == "lrp":
-        net.embedding.embedding.rule = IdentityRule()
-        embedded_input = interpretable_emb.indices_to_embeddings(input_data)
-        outputs = net(embedded_input)
-        pred_label = outputs.argmax(dim=1).item()
-        pred_prob = F.softmax(outputs, dim=1)[0, pred_label].item()
-        attributions = lig.attribute(embedded_input, target=pred_label)
-        attributions = attributions.squeeze(0)
-    elif explain_method == "gradientshap":
-        embedded_input = interpretable_emb.indices_to_embeddings(input_data)
-        reference_emb = torch.zeros_like(embedded_input)
-        outputs = net(embedded_input)
-        pred_label = outputs.argmax(dim=1).item()
-        pred_prob = F.softmax(outputs, dim=1)[0, pred_label].item()
-        attributions = lig.attribute(embedded_input, baselines=reference_emb, target=pred_label)
-        attributions = attributions.squeeze(0)
     elif explain_method == "kernelshap" or explain_method == "lime" or explain_method == "lemna":
         embedded_input = interpretable_emb.indices_to_embeddings(input_data)
         reference_emb = torch.zeros_like(embedded_input)
@@ -234,7 +203,7 @@ def perform_explanation(net, input_data, explain_method, lig, interpretable_emb,
         pred_prob = F.softmax(outputs, dim=1)[0, pred_label].item()
         attributions = lig.attribute(embedded_input, target=pred_label)
         attributions = attributions.squeeze(0)
-    elif explain_method == "shapvalue" or explain_method == "feature":
+    elif explain_method == "feature":
         embedded_input = interpretable_emb.indices_to_embeddings(input_data)
         reference_emb = torch.zeros_like(embedded_input)
         outputs = net(embedded_input)
@@ -246,11 +215,10 @@ def perform_explanation(net, input_data, explain_method, lig, interpretable_emb,
         attributions = attributions[:, 0]
 
 
-    if explain_method == "kernelshap" or explain_method == "lime" or explain_method == "shapvalue" or explain_method == "lemna" or explain_method == "feature":
+    if explain_method == "kernelshap" or explain_method == "lime" or explain_method == "lemna" or explain_method == "feature":
         attributions_list = attributions.tolist()
         final_importance_scores = aggregate_token_importance(attributions_list, tokens_original, token_lengths)  
     else:
-        # 计算字符级别的重要性分数
         tokens_importances = calculate_token_importances(embedded_input, attributions, max_len, token_aggretion_method)
         final_importance_scores = aggregate_token_importance(tokens_importances, tokens_original, token_lengths)       
 

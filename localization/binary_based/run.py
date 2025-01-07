@@ -74,10 +74,7 @@ else:
     train_binary_dataset = get_binary_dataset_plus(train_dataset, train_data_json, dataset_name, http_tokenizer_with_httpinfo, feature_method=feature_method, k=K, balance=1.0, sample_rate=sample_rate, emb_model=emb_model, poison_ratio=poison_ratio)
 
 model = B_Model(train_binary_dataset, model_name=cls_model, device=device)
-# 在模型开始训练之前记录开始时间
 train_start_time = time.time()
-
-# 模型训练
 model.train()
 
 train_end_time = time.time()

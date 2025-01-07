@@ -24,7 +24,7 @@ class B_Model:
         self.model_params = model_params
         self.model = None
         self.device = device
-        # self.scaler = StandardScaler()  # 暂时先不用标准化
+        # self.scaler = StandardScaler() 
 
         # Extract features and labels
         self.features = [data[0] for data in binary_dataset]
@@ -307,7 +307,7 @@ def evaluate_model_withlog_waf(model, dataset_name, test_dataset, test_data_json
                 log_file.write("Abnormal HTTP Tokens:\n")
                 log_file.write("\n".join(abnormal_tokens) + "\n")
                 log_file.write("Important Token Scores:\n")
-                for score in part_scores:  # 显示重要性分数
+                for score in part_scores:
                     log_file.write(str(score) + "\n")
                 log_file.write("Abnormal HTTP Parts:\n")
                 log_file.write("\n".join(abnormal_http_parts) + "\n")

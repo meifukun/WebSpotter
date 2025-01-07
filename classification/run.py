@@ -115,4 +115,3 @@ model_save_path = os.path.join(args.tmp_model, f"{model_save_name}.pth")
 os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
 save_model(rec.get_best_model_state_dict(), word2id, id2word, args, model_args, model_save_path, NUM_CLS)
 print("Model saved to: ", model_save_path)
-

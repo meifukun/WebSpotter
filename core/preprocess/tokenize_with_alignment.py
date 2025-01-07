@@ -189,7 +189,7 @@ def char_tokenizer_with_http_level_alignment_furl_header(req: RequestInfo):
         p_list = list(unquote_plus(p, encoding='utf-8', errors='replace'))
         tokenized_request.extend(p_list)
         
-        decoded_p = unquote_plus(p, encoding='utf-8', errors='replace')  # 先对p进行解码
+        decoded_p = unquote_plus(p, encoding='utf-8', errors='replace')
         # alignment.append([p, p_list])
         alignment.append([decoded_p, p_list])
 
