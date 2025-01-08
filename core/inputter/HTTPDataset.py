@@ -20,28 +20,6 @@ class RequestInfo:
     def dump_json(self):
         return json.dumps(self.__dict__)
 
-    @staticmethod
-    def from_teleg(json_str):
-        # json_str: str (raw json from china telecom)
-        obj = json.loads(json_str)
-        url = obj['requestHeader'].split()[1]
-        body = 0
-        return RequestInfo(obj['method'], url, body,
-                           HTTPversion=obj['protocolVersion'],
-                           severity=obj['severity'],
-                           requestStatus=obj['requestStatus'],
-                           responseCode=obj['responseCode'],
-                           id=obj['id'])
-    @staticmethod
-    def from_CSIC2010( json_str ):
-        obj = json.loads(json_str)
-        url = obj["url"]
-        body = obj["body"]
-        method = obj["method"]
-        if str(body) != "" :
-            url = url + "?" + body
-        body = 0
-        return RequestInfo(  method, url, body,id=obj['id'])
 
 
 class HTTPDataset:

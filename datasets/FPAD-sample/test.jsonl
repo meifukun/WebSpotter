@@ -1,0 +1,4 @@
+{"method": "GET", "url": "tienda1/publico/registro.jsp?modo=insertar&login=cen'%20OR%20'x'='x&password=DeJIllo&nombre=Nahu�n&apellidos=Pruna Zujovic&email=einstein@shamballa-pneuma.st&dni=91350622G&direccion=C/ Antonio Vilchez 23, 3?C&ciudad=Iniesta&cp=29492&provincia=M�laga&ntc=1379255778130080&B1=Confirmar", "body": "", "label": 1, "location": ["<ModifiedURLkey>login"]}
+{"method": "POST", "url": "tienda1/publico/.ssh/known_hosts", "body": "id=2&nombre=Manuel&precio=8143&cantidad=33&B1=Pasar+por+caja", "label": 2, "location": ["<Path>.ssh/known_hosts"]}
+{"method": "GET", "url": "%5C%5C%26apos%3B/bin/cat%20/etc/shadow%5C%5C%26apos%3B/publico/caracteristicas.jsp?id=2", "body": "", "label": 3, "location": ["<Path>%5C%5C%26apos%3B/bin/cat%20/etc/shadow%5C%5C%26apos%3B"]}
+{"method": "GET", "url": "tienda1/publico/pagar.jsp?modo=insertar&precio=vbscript:msgbox(%22XSS%22)&B1=Pasar por caja", "body": "", "label": 4, "location": ["<ModifiedURLkey>precio"]}

