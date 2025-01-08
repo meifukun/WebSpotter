@@ -28,7 +28,7 @@ parser.add_argument("--max_len", default=700, type=int, help="Maximum sequence l
 parser.add_argument("--emb_dim", default=512, type=int, help="Dimensionality of the embeddings")
 parser.add_argument("--dropout", default=None, type=float, help="Dropout rate for the model")
 parser.add_argument("--gpu", default="0", type=str)
-parser.add_argument("--dataset", default="fpad", type=str, help="Dataset to use, one of [csic, pkdd, fpad, pocrest]")
+parser.add_argument("--dataset", default="fpad", type=str, help="Dataset to use, one of [csic, pkdd, fpad, cve]")
 parser.add_argument("--token", default="char", type=str, help="one of [char, word]")
 parser.add_argument("--optimizer", default='adam', type=str, help="Optimizer to use, one of [adam, adamw]")
 parser.add_argument("--decay_ratio", default=1.0, type=float, help="Decay ratio for the learning rate scheduler, 1.0 means no decay")

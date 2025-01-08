@@ -16,7 +16,7 @@ from classification.utils import load_model
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model_path',type=str, required=True)
-parser.add_argument('--dataset', type=str, required=True, choices=['csic','pkdd','fpad','pocrest'])
+parser.add_argument('--dataset', type=str, required=True, choices=['csic','pkdd','fpad','cve'])
 parser.add_argument('--test_path', type=str, required=True)
 parser.add_argument('--outputdir', type=str, required=True, help="Directory to store output files")
 parser.add_argument("--token", default="char", type=str, help="one of [char, word]")

@@ -79,7 +79,7 @@ def check_payload_accuracy_pkdd(attacks, suspected_attacks, total_num):
 def check_payload_accuracy_poc(attacks, suspected_attacks, total_num):
     """
     Evaluate the accuracy of model-identified attack payloads compared to ground-truth attack locations.
-    Designed specifically for the Pocrest dataset.
+    Designed specifically for the CVE dataset.
     """
     location_params = []
     for param in attacks:

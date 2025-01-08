@@ -226,7 +226,7 @@ def perform_explanation(net, input_data, explain_method, lig, interpretable_emb,
 
 
 def analyze_attacks_accuracy(dataset_type, test_data_json_i, suspected_attacks, final_importance_scores):
-    if dataset_type == "fpad" or dataset_type == "pocrest":
+    if dataset_type == "fpad" or dataset_type == "cve":
         if 'attacks' in test_data_json_i:
             attacks = test_data_json_i['attacks']
             metrics, ulocation = check_payload_accuracy_poc(attacks, suspected_attacks, len(final_importance_scores))
@@ -247,7 +247,7 @@ def analyze_attacks_accuracy(dataset_type, test_data_json_i, suspected_attacks, 
     return precision, recall, f1_score, accurary, jaccard_index, ulocation, attacks
 
 def get_location_ground_truth(dataset_type, test_data_json_i, http_split_part):
-    if dataset_type == "fpad" or dataset_type == "pocrest":
+    if dataset_type == "fpad" or dataset_type == "cve":
         if 'attacks' in test_data_json_i :
             attacks = test_data_json_i.get('attacks', [])
             ground_truth = get_ground_truth_poc(attacks, http_split_part)
