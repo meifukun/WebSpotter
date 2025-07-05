@@ -1,108 +1,123 @@
-import editdistance
 import re
+import time
 import numpy as np
+import os
+import argparse
+from pathlib import Path
+import editdistance
+from concurrent.futures import ProcessPoolExecutor
+import multiprocessing
 
-def clean_up_line(line):
-    line = line.replace('"', ' ')
-    line = re.sub(r'\s+', ' ', line)
-    return line.strip()
+# Configuration parameters
+MIN_SIGNATURE_LENGTH = 4  # Minimum common subsequence length for valid signatures
 
 def initialize_distance_matrix(strings):
-    """
-    Initializes a distance matrix for a list of strings based on edit distance with length ratio and distance thresholds.
-    """
+    """Compute pairwise edit distance matrix for clustering"""
     n = len(strings)
-    distance_matrix = np.full((n, n), float('inf'))  # Initialize the distance matrix with infinity
-    
+    distance_matrix = np.full((n, n), float('inf'))
     for i in range(n):
-        for j in range(i + 1, n):  # Only calculate the upper triangle
+        for j in range(i + 1, n):
             len_i, len_j = len(strings[i]), len(strings[j])
-            if 0.667 <= len_i / len_j <= 1.5:  # Check length ratio condition
+            # Apply length ratio constraint from paper
+            if 0.667 <= len_i / len_j <= 1.5:
                 distance = editdistance.eval(strings[i], strings[j])
-                if distance < (len_i + len_j) / 4:  # Apply distance threshold
+                if distance < (len_i + len_j) * 0.25 :
                     distance_matrix[i, j] = distance
-                    distance_matrix[j, i] = distance  # Ensure symmetry
-
+                    distance_matrix[j, i] = distance
     return distance_matrix
 
-
 def update_representative(cluster_ids, active, distance_matrix):
-    """
-    Updates cluster representatives by selecting the element with the smallest total distance to other members.
-    """
+    """Update cluster representative to minimize intra-cluster distance"""
     unique_clusters = np.unique(cluster_ids[active])
-
     for cluster in unique_clusters:
         members = np.where(cluster_ids == cluster)[0]
-        
         if len(members) == 1:
-            continue  # Skip clusters with a single member
-
+            continue
+            
         min_distance_sum = float('inf')
         best_representative = members[0]
-
         for member in members:
             distance_sum = np.sum(distance_matrix[member, members])
             if distance_sum < min_distance_sum:
                 min_distance_sum = distance_sum
                 best_representative = member
-
+                
         active[members] = False
-        active[best_representative] = True  # Activate the new representative
+        active[best_representative] = True
 
-def cluster_tokens(strings, part_types, importance_scores):
-    """
-    Clusters strings based on edit distance, merging similar tokens and synchronizing type and score information.
-    """
+def cluster_tokens_chunk(chunk):
+    """Cluster a chunk of payloads with progress tracking"""
+    strings, part_types = chunk
     n = len(strings)
-    cluster_ids = np.arange(n)  # Initially, each string forms its own cluster
+    cluster_ids = np.arange(n)
     distance_matrix = initialize_distance_matrix(strings)
-    print(distance_matrix)
-    active = np.ones(n, dtype=bool)  # Active status for cluster representatives
-
-    # Perform hierarchical clustering
+    active = np.ones(n, dtype=bool)
+    
     while np.sum(active) > 1:
-        min_distance = float('inf')
-        x, y = -1, -1
-
-        # Find the pair with the minimum distance
-        for i in range(n):
-            if not active[i]:
-                continue
-            for j in range(i + 1, n):
-                if active[j] and distance_matrix[i][j] < min_distance:
-                    min_distance = distance_matrix[i][j]
-                    x, y = i, j
-
-        if min_distance == float('inf'):
+        # Find closest clusters (optimized with NumPy)
+        active_indices = np.where(active)[0]
+        min_val = np.inf
+        min_i, min_j = -1, -1
+        
+        for idx_i, i in enumerate(active_indices[:-1]):
+            for j in active_indices[idx_i+1:]:
+                if distance_matrix[i, j] < min_val:
+                    min_val = distance_matrix[i, j]
+                    min_i, min_j = i, j
+        
+        if min_val == np.inf:
             break
-
-        # Merge clusters and assign the smaller ID as the new cluster ID
-        new_id = min(cluster_ids[x], cluster_ids[y])
-        old_id = max(cluster_ids[x], cluster_ids[y])
+        
+        # Merge clusters
+        new_id = min(cluster_ids[min_i], cluster_ids[min_j])
+        old_id = max(cluster_ids[min_i], cluster_ids[min_j])
         cluster_ids[cluster_ids == old_id] = new_id
-        active[y] = False  # Deactivate the representative of the merged cluster
-
-        # Update the cluster representatives
+        active[min_j] = False
         update_representative(cluster_ids, active, distance_matrix)
 
-    # Organize strings, types, and scores into their respective clusters
-    final_clusters = {cid: [] for cid in set(cluster_ids)}
-    type_clusters = {cid: [] for cid in set(cluster_ids)}
-    score_clusters = {cid: [] for cid in set(cluster_ids)}
-
+    
+    # Organize final clusters
+    final_clusters = {}
+    type_clusters = {}
     for idx, cid in enumerate(cluster_ids):
+        if cid not in final_clusters:
+            final_clusters[cid] = []
+            type_clusters[cid] = []
         final_clusters[cid].append(strings[idx])
         type_clusters[cid].append(part_types[idx])
-        score_clusters[cid].append(importance_scores[idx])
-
-    # Consolidate type information for each cluster
-    final_type_clusters = [list(set(types)) for types in type_clusters.values()]
     
-    return list(final_clusters.values()), final_type_clusters
+    return list(final_clusters.values()), [list(set(types)) for types in type_clusters.values()]
 
+def cluster_large_dataset(payloads, types, chunk_size=1000):
+    """Cluster large dataset using parallel chunk processing"""
+    # Split into chunks
+    chunks = []
+    for i in range(0, len(payloads), chunk_size):
+        chunk_payloads = payloads[i:i+chunk_size]
+        chunk_types = types[i:i+chunk_size]
+        chunks.append((chunk_payloads, chunk_types))
+    
+    # Parallel processing
+    results = []
+    with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
+        print(f"[Clustering] Processing {len(chunks)} chunks in parallel...")
+        futures = [executor.submit(cluster_tokens_chunk, chunk) for chunk in chunks]
+        
+        for i, future in enumerate(futures, 1):
+            clusters, type_clusters = future.result()
+            results.append((clusters, type_clusters))
+    
+    # Combine results
+    all_clusters = []
+    all_type_clusters = []
+    for clusters, type_clusters in results:
+        all_clusters.extend(clusters)
+        all_type_clusters.extend(type_clusters)
+    
+    return all_clusters, all_type_clusters
 
 def longest_common_subsequence(s1, s2):
+    """Compute longest common subsequence with position awareness"""
     m, n = len(s1), len(s2)
     dp = [[0] * (n + 1) for _ in range(m + 1)]
 
@@ -140,319 +155,274 @@ def longest_common_subsequence(s1, s2):
 
     return ''.join(spaced_lcs)
 
-
 def find_common_subsequence(str_list):
-    """
-    Finds the longest common subsequence among a list of strings.
-    """
     if not str_list:
         return ""
     if len(str_list) == 1:
         return str_list[0]
 
-    # Convert all strings in the list to lowercase
     str_list = [s.lower() for s in str_list]
 
-    # Find the longest common subsequence between the first two strings
     common_sub = longest_common_subsequence(str_list[0], str_list[1])
 
-    # Iteratively refine the common subsequence with remaining strings
     for s in str_list[2:]:
         common_sub = longest_common_subsequence(common_sub, s)
-        if not common_sub:  # Stop early if no common subsequence remains
+        if not common_sub: 
             break
 
     return common_sub
 
+def clean_up_line(line):
+    line = line.replace('"', ' ')
+    line = re.sub(r'\s+', ' ', line)
+    return line.strip()
 
 def decode_and_update_regex(expression):
-    """
-    Replaces all percent-encoded patterns in a string with a regex wildcard pattern.
-    """
-    # Find all patterns that match `%` followed by two hexadecimal digits
     encoded_parts = re.findall(r'%[0-9a-fA-F]{2}', expression)
     new_expression = expression
 
     for part in encoded_parts:
-        new_expression = new_expression.replace(part, r'.*')  # Replace with regex wildcard
+        new_expression = new_expression.replace(part, r'.*')
 
     return new_expression
 
 def generate_signatures(clusters, type_clusters):
-    """
-    Generates regular expression signatures from each cluster's common subsequence.
-    
-    Args:
-        clusters (list of list of str): List of string clusters.
-        type_clusters (list of list of str): List of type information corresponding to each cluster.
-
-    Returns:
-        tuple: A tuple containing:
-            - List of valid regex signatures.
-            - List of types corresponding to valid clusters.
-            - List of valid clusters that generated signatures.
-    """
+    """Generate regex signatures from payload clusters"""
     signatures = []
     valid_types = []
     valid_clusters = []
-
+    
     for idx, cluster in enumerate(clusters):
-        # Find the longest common subsequence for the cluster
+        # Skip small clusters as per paper methodology
+            
         common_subseq = find_common_subsequence(cluster)
-        common_subseq = common_subseq.rstrip('\\')  # Remove trailing backslashes, if any
-        common_subseq = clean_up_line(common_subseq)  # Clean up the line
-
+        common_subseq = clean_up_line(common_subseq)
+        if len(common_subseq) < MIN_SIGNATURE_LENGTH:
+            continue
+            
+        # Process into regex pattern
         if common_subseq:
-            # Replace all whitespace characters with '.*' to match any character sequence
             temp_signature = re.sub(r'[\s]+', r'.*', common_subseq)
-
-            # Escape the string and preserve inserted '.*' sequences
             signature = re.escape(temp_signature).replace(r'\.\*', r'.*')
         else:
-            # Use an empty string as the signature if no valid subsequence exists
             signature = ''
 
-        # Check if the signature is valid and not overly generic
         if signature and signature not in ['/', '.*']:
-            valid_types.append(type_clusters[idx])  # Save type information for valid clusters
-            signatures.append(decode_and_update_regex(signature))  # Decode and finalize the signature
-            valid_clusters.append(cluster)  # Add valid cluster to the result list
-
+            valid_types.append(type_clusters[idx])
+            signatures.append(decode_and_update_regex(signature))
+            valid_clusters.append(cluster)
+            
     return signatures, valid_types, valid_clusters
 
-
-def generate_signatures(attack_strings, part_types, detailed_name, results_name1, results_name2, importance_scores, min_length):
-    """
-    Integrates clustering, finding common subsequences, and generating signatures.
-    """
-    # Perform clustering on attack strings
-    clusters, type_clusters = cluster_tokens(attack_strings, part_types, importance_scores)
-    print("Length of clusters:", len(clusters))
-    print("Length of type_clusters:", len(type_clusters))
-    
-    # Generate signatures from clusters
-    signatures, valid_types, clusters = generate_signatures(clusters, type_clusters)
-    print("Length of signatures:", len(signatures))
-    print("Length of valid_types:", len(valid_types))
-    
-    # Print cluster statistics
-    cluster_sizes = [len(cluster) for cluster in clusters]
-    print_cluster_statistics(cluster_sizes)
-    
-    # Save detailed cluster information and signatures
-    save_cluster_details(clusters, signatures, valid_types, detailed_name, results_name1, results_name2, min_length=min_length)
-    
-    return signatures
-
-def save_cluster_details(clusters, signatures, valid_types, filename, special_filename, normal_filename, min_size=10, min_length=10):
-    """
-    Saves detailed information about clusters and categorizes signatures into normal and special cases.
-    """
-    # Print lengths of inputs to verify alignment
-    print("Length of clusters:", len(clusters))
-    print("Length of signatures:", len(signatures))
-    print("Length of valid_types:", len(valid_types))
-
-    # Categorize special signatures
-    short_signatures = []
-    small_cluster_signatures = []
-    substring_signatures = []
-
-    # Sort clusters by size
-    cluster_details = sorted(zip(clusters, signatures, valid_types), key=lambda x: len(x[0]))
-
-    with open(filename, 'w') as file, open(special_filename, 'w') as special_file, open(normal_filename, 'w') as normal_file:
-        for cluster, signature, types in cluster_details:
-            # Write cluster size, types, and details
-            file.write(f"Cluster size: {len(cluster)} - Types: {', '.join(types)}\n")
-            for item in cluster:
-                file.write(f"{item}\n")
-            file.write(f"Generated Signature: {signature}\n\n" + "-" * 50 + "\n")
-
-            # Calculate signature length after removing '.*'
-            signature_length = len(re.sub(r'\.\*', '', signature))
-
-            # Categorize based on signature properties
-            if signature_length < min_length:
-                short_signatures.append((signature, types))
-                continue
-
-            if any(sig != signature and signature in sig for sig in signatures):
-                substring_signatures.append((signature, types))
-                continue
-
-            # Save normal signatures
-            normal_file.write(f"{signature}\n")
-            normal_file.write(f"Types: {', '.join(types)}\n")
-
-        # Save special signatures
-        if short_signatures:
-            special_file.write("Short Signatures:\n")
-            for sig, types in short_signatures:
-                special_file.write(f"{sig}\n")
-                special_file.write(f"Types: {', '.join(types)}\n")
-
-        if small_cluster_signatures:
-            special_file.write("Small Cluster Signatures:\n")
-            for sig, types in small_cluster_signatures:
-                special_file.write(f"{sig}\n")
-                special_file.write(f"Types: {', '.join(types)}\n")
-
-        if substring_signatures:
-            special_file.write("Substring Signatures:\n")
-            for sig, types in substring_signatures:
-                special_file.write(f"{sig}\n")
-                special_file.write(f"Types: {', '.join(types)}\n")
-
-
-def print_cluster_statistics(cluster_sizes):
-    """
-    Prints statistics about cluster sizes by grouping them into predefined intervals.
-    """
-    from collections import Counter
-    size_count = Counter(cluster_sizes)
-    intervals = {}
-
-    # Define intervals for cluster size
-    ranges = [(1, 1), (2, 2), (3, 5), (6, 10), (11, 20), (21, 50), (51, 100), (101, float('inf'))]
-
-    # Initialize interval counters
-    for r in ranges:
-        intervals[r] = 0
-
-    # Count clusters in each interval
-    for size in cluster_sizes:
-        for r in ranges:
-            if r[0] <= size <= r[1]:
-                intervals[r] += 1
-                break
-
-    # Print results
-    print("Cluster Size Statistics:")
-    for r in ranges:
-        if r[1] == float('inf'):
-            print(f"{r[0]}+ : {intervals[r]}")
-        else:
-            print(f"{r[0]}-{r[1]} : {intervals[r]}")
-
-
-def load_parameter_values(filepath):
-    parameter_values = {}
-    current_param = None
-    with open(filepath, 'r', encoding='utf-8') as file:
-        for line in file:
-            cleaned_line = clean_up_line(line)
-            if cleaned_line.endswith(':'): 
-                current_param = cleaned_line[:-1] 
-                parameter_values[current_param] = []
-            elif current_param and cleaned_line:
-                parameter_values[current_param].append(cleaned_line)
-    return parameter_values
-
 def extract_abnormal_http_parts(file_path):
-    """
-    Extracts abnormal HTTP parts, their types, and importance scores from a file, 
-    and filters parts based on a score threshold.
-    """
+    """Parse evaluation data to extract malicious payloads"""
     abnormal_http_parts = []
     part_types = []
-    importance_scores = []
-
-    # Temporary storage for parts being processed
-    current_score = []
-    current_part = []
-    current_type = []
-
+    
     with open(file_path, 'r') as file:
         lines = file.readlines()
         i = 0
         while i < len(lines):
             line = lines[i].strip()
-
-            # Process "Important Token Scores"
-            if line.startswith("Important Token Scores:"):
-                current_score = []
-                i += 1
-                while i < len(lines) and not lines[i].strip().startswith("Abnormal HTTP Parts:"):
-                    current_score.append(eval(lines[i].strip()))
+            
+            if line.startswith("Request") and "Evaluation" in line:
+                method, url, body = "", "", ""
+                
+                # Extract HTTP components
+                while i < len(lines) and not lines[i].strip().startswith("Original Text:"):
                     i += 1
-
-            # Process "Abnormal HTTP Parts"
-            if i < len(lines) and lines[i].strip().startswith("Abnormal HTTP Parts:"):
-                current_part = []
-                i += 1
-                while i < len(lines) and not lines[i].strip().startswith("Abnormal Parts types:"):
-                    current_part.append(lines[i].rstrip('\n'))
+                if i < len(lines):
                     i += 1
-
-            # Process "Abnormal Parts types"
-            if i < len(lines) and lines[i].strip().startswith("Abnormal Parts types:"):
-                current_type = []
-                i += 1
-                while i < len(lines) and not lines[i].strip().startswith("Evaluation Metrics"):
-                    current_type.append(lines[i].strip())
+                    original_line = lines[i].strip()
+                    
+                    method_match = re.search(r"Method:(\w+)", original_line)
+                    url_match = re.search(r"URL:([^ ]+)", original_line)
+                    body_match = re.search(r"Body:(.+)", original_line)
+                    
+                    if method_match: method = method_match.group(1)
+                    if url_match: url = url_match.group(1)
+                    if body_match: body = body_match.group(1)
+                
+                # Locate malicious tokens
+                while i < len(lines) and not lines[i].strip().startswith("Abnormal HTTP Tokens:"):
                     i += 1
-
-                # Skip the set if any component list is empty
-                if not current_part or not current_type or not current_score:
+                if i < len(lines):
                     i += 1
-                    continue
-
-                assert len(current_part) == len(current_type) == len(current_score), "Data mismatch in parts, types, or scores."
-
-                # Process each abnormal part
-                for part, ptype, score in zip(current_part, current_type, current_score):
-                    if ptype in ["Body", "Query"]:
-                        param_name = part.split('=')[0]
-                        new_type = f"{ptype}:{param_name}"
-                        part_value = part[len(param_name) + 1:]
-                        score_trimmed = score[len(param_name) + 1:]  # Adjust score length
-                        ptype = new_type
-                        part = part_value
-                        score = score_trimmed
-
-                        if part:  # Only add if part is not empty
-                            assert len(part) == len(score)
-                            abnormal_http_parts.append(part)
-                            part_types.append(ptype)
-                            importance_scores.append(score)
-
-                    elif ptype in ["Path"]:
-                        abnormal_http_parts.append(part)
-                        part_types.append(ptype)
-                        importance_scores.append(score)
-                    else:
-                        abnormal_http_parts.append(part)
-                        part_types.append("else")
-                        importance_scores.append(score)
+                    abnormal_tokens = []
+                    
+                    while i < len(lines) and lines[i].strip() and not lines[i].strip().startswith("Evaluation Metrics"):
+                        token = lines[i].strip()
+                        if token:
+                            abnormal_tokens.append(token)
+                        i += 1
+                    
+                    # Classify tokens by location
+                    for token in abnormal_tokens:
+                        in_body = body and token in body
+                        in_url = url and token in url
+                        
+                        if in_body:
+                            if '=' in token:
+                                param_name, param_value = token.split('=', 1)
+                                abnormal_http_parts.append(param_value)
+                                part_types.append(f"Body:{param_name}")
+                            else:
+                                abnormal_http_parts.append(token)
+                                part_types.append("Body:unknown")
+                        elif in_url:
+                            url_parts = url.split('?', 1)
+                            path = url_parts[0]
+                            query = url_parts[1] if len(url_parts) > 1 else ""
+                            
+                            in_path = token in path
+                            in_query = token in query
+                            
+                            if in_query:
+                                if '=' in token:
+                                    param_name, param_value = token.split('=', 1)
+                                    abnormal_http_parts.append(param_value)
+                                    part_types.append(f"Query:{param_name}")
+                                else:
+                                    abnormal_http_parts.append(token)
+                                    part_types.append("Query:unknown")
+                            elif in_path:
+                                abnormal_http_parts.append(token)
+                                part_types.append("Path")
+                            else:
+                                abnormal_http_parts.append(token)
+                                part_types.append("URL:unknown")
             else:
                 i += 1
-                continue
 
-    # Filter parts based on score threshold
-    score_threshold = 0
-    filtered_parts = []
-    filtered_part_types = []
-    filtered_scores = []
+    # Filter and return results
+    return [p for p in abnormal_http_parts if p], [t for t in part_types if t]
 
-    for part, ptype, scores in zip(abnormal_http_parts, part_types, importance_scores):
-        # Filter characters below the threshold
-        filtered_part = ''.join(char if score > score_threshold else ' ' for char, score in zip(part, scores))
-        filtered_part = re.sub(r'\s+', ' ', filtered_part).strip()  # Compress spaces
-        filtered_part_scores = [score if score > score_threshold else 0 for score in scores]
+def clean_string(input_string):
+    """Sanitize input strings for rule generation"""
+    if not input_string:
+        return input_string
+    return re.sub(r'[\x00-\x1F\x7F]', '', input_string)
 
-        if filtered_part:  # Only add non-empty parts
-            filtered_parts.append(filtered_part)
-            filtered_part_types.append(ptype)
-            filtered_scores.append(filtered_part_scores)
+def is_valid_param_name(param):
+    """Validate parameter names for WAF rules"""
+    return re.match(r'^[a-zA-Z0-9_.-]+$', param) is not None
 
-    return filtered_parts, filtered_part_types, filtered_scores
+def generate_waf_rules(signatures, types, output_path):
+    """Generate SecLang WAF rules from signatures and types"""
+    signature_map = {}
+    for sig, type_list in zip(signatures, types):
+        if sig not in signature_map:
+            signature_map[sig] = set()
+        
+        for type_info in type_list:
+            if ':' in type_info:
+                type_part, param = type_info.split(':', 1)
+                if is_valid_param_name(param.strip()):
+                    if type_part == 'Query':
+                        signature_map[sig].add(f"ARGS_GET:{param.strip()}")
+                    elif type_part == 'Body':
+                        signature_map[sig].add(f"ARGS_POST:{param.strip()}")
+                else:
+                    signature_map[sig].add("ARGS_GET")
+                    signature_map[sig].add("ARGS_POST")
+            else:
+                if type_info.strip() == 'Path':
+                    signature_map[sig].add("REQUEST_FILENAME")
+                else:
+                    signature_map[sig].add("REQUEST_URI")
+    
+    with open(output_path, 'w') as outfile:
+        rule_id = 1000000
+        for signature, fields in signature_map.items():
+            fields_str = '|'.join(sorted(fields))
+            
+            rule = (
+                f"SecRule {fields_str} \"@rx {signature}\" \\\n"
+                f"    \"id:{rule_id}, \\\n"
+                f"    deny, \\\n"
+                f"    t:lowercase, \\\n"
+                f"    t:urlDecode, \\\n"
+                f"    status:403\"\n\n"
+            )
+            outfile.write(rule)
+            rule_id += 1
 
+def save_cluster_details(clusters, signatures, types, detail_path):
+    """Save cluster details for analysis and debugging"""
+    with open(detail_path, 'w') as file:
+        for cluster, signature, type_list in zip(clusters, signatures, types):
+            file.write(f"Cluster size: {len(cluster)} - Types: {', '.join(type_list)}\n")
+            for item in cluster:
+                file.write(f"{item}\n")
+            file.write(f"Generated Signature: {signature}\n\n" + "-"*50 + "\n")
 
-def process_data_and_generate_signatures(input_file, detail_file, human_file, auto_file,min_length):
-    abnormal_parts_list, part_types, importance_scores = extract_abnormal_http_parts(input_file)
-    signatures = generate_signatures(abnormal_parts_list, part_types , detail_file, human_file, auto_file, importance_scores,min_length)
+def main():
+    """Complete rule generation pipeline"""
+    parser = argparse.ArgumentParser(
+        description="WebSpotter Rule Generation Pipeline",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    parser.add_argument(
+        "input_file",
+        help="Path to evaluation_data.txt containing localization results",
+        type=str
+    )
+    parser.add_argument(
+        "output_dir",
+        help="Directory to save generated rules and details",
+        type=str
+    )
+    args = parser.parse_args()
 
-    return signatures
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
+    detail_path = output_dir / "cluster_details.txt"
+    rule_path = output_dir / "waf_rules.conf"
+
+    # Step 1: Extract abnormal HTTP parts
+    print("[1/4] Extracting malicious payloads from evaluation data...")
+    t1 = time.time()
+    abnormal_parts, part_types = extract_abnormal_http_parts(args.input_file)
+    t2 = time.time()
+    print(f"  Extracted {len(abnormal_parts)} malicious payloads")
+    print(f"  Time taken: {t2 - t1:.2f} seconds\n")
+
+    # Step 2: Cluster similar payloads
+    print("[2/4] Clustering malicious payloads...")
+    t1 = time.time()
+    clusters, type_clusters = cluster_large_dataset(
+        abnormal_parts, 
+        part_types
+    )
+    
+    t2 = time.time()
+    print(f"  Created {len(clusters)} clusters from {len(abnormal_parts)} payloads")
+    print(f"  Time taken: {t2 - t1:.2f} seconds\n")
+
+    # Step 3: Generate signatures from clusters
+    print("[3/4] Generating regex signatures...")
+    t1 = time.time()
+    signatures, valid_types, valid_clusters = generate_signatures(clusters, type_clusters)
+    t2 = time.time()
+    print(f"  Generated {len(signatures)} valid signatures")
+    print(f"  Time taken: {t2 - t1:.2f} seconds\n")
+
+    # Step 4: Save cluster details
+    print("[4/4] Generating output files...")
+    t1 = time.time()
+    save_cluster_details(valid_clusters, signatures, valid_types, detail_path)
+    generate_waf_rules(signatures, valid_types, rule_path)
+    t2 = time.time()
+    print(f"  Output files saved.")
+    print(f"  Time taken: {t2 - t1:.2f} seconds\n")
+
+    print("[COMPLETE] Rule generation pipeline finished")
+    print(f"  Cluster details: {detail_path}")
+    print(f"  WAF rules: {rule_path}")
+
+if __name__ == "__main__":
+    main()
+
+# python rule_generation/extract_rule.py explain_result/FPAD/evaluation_data.txt signatures/FPAD
 

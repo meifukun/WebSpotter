@@ -1,7 +1,9 @@
+import json
 import re
 from urllib.parse import urlparse, unquote_plus
 from core.inputter import RequestInfo
 from .tokenize import _textcnn_paper_simple_tokenizer
+from flatten_json import flatten
 
 def is_form_urlencoded(body):
     """
@@ -15,6 +17,141 @@ def is_form_urlencoded(body):
     """
     pattern = r'^[\w.%+]+=[\S]*'
     return bool(re.match(pattern, body))
+
+def parse_custom_body(body: str):
+    body = body.strip()
+    end_index = body.rfind('}')
+    valid_json = body[:end_index + 1] if end_index != -1 else body
+
+    try:
+        data = json.loads(valid_json)
+    except json.JSONDecodeError:
+        return []
+
+    flat_data = flatten(data)
+    return [f"{k}={v}" for k, v in flat_data.items()]
+
+
+def process_body(body):
+    def decode_unicode_escapes(text):
+        def replace_unicode(match):
+            try:
+                code_point = match.group(1)
+                return chr(int(code_point, 16))
+            except:
+                return match.group(0)
+        
+        unicode_pattern = re.compile(r'\\u([0-9a-fA-F]{4})')
+        return unicode_pattern.sub(replace_unicode, text)
+
+    if re.search(r'\\u[0-9a-fA-F]{4}', body):
+        body = decode_unicode_escapes(body)
+    return body
+
+
+def parse_multipart_body(body):
+
+    boundary_match = re.match(r'(--[^\r\n]+)', body)
+    boundary = boundary_match.group(1)
+    
+    parts = body.split(boundary)
+    
+    fields = {}
+    
+    for part in parts:
+        part = part.strip()
+        
+        if not part:
+            continue 
+        
+        # 查找表单字段名
+        name_match = re.search(r'Content-Disposition: form-data; name="([^"]+)"', part)
+        if not name_match:
+            continue  
+        
+        field_name = name_match.group(1)
+        
+        field_value = ""
+        filename_match = re.search(r'filename="([^"]+)"', part)
+        if filename_match:
+            filename = filename_match.group(1)
+            field_value = f"{filename}:"
+
+        value_match = re.search(r'\r\n\r\n(.*)', part, re.S)
+        if value_match:
+            field_value = field_value + value_match.group(1).strip()
+        
+        fields[field_name] = field_value
+    
+    key_value_strings = [f"{key}={value}" for key, value in fields.items()]
+    
+    return key_value_strings
+
+def parse_headers(headers_str: str):
+    """Return a list of header strings in the form "Name: Value".
+
+    The raw header string may contain literal escape sequences ("\\r\\n")
+    or real CR/LF newlines; this helper normalises all of them so we can
+    split cleanly. Empty lines are ignored.
+    """
+    if not headers_str:
+        return []
+
+    # Normalise the different newline encodings to a plain "\n"
+    unified = (
+        headers_str.replace("\\\\r\\\\n", "\n")  # literal "\\r\\n"
+        .replace("\\r\\n", "\n")  # escaped "\r\n"
+        .replace("\r\n", "\n")  # actual CRLF
+    )
+
+    # Split and trim
+    lines = [line.strip() for line in unified.split("\n") if line.strip()]
+    return lines
+
+# def get_http_level_split(req: RequestInfo):
+#     """
+#     Splits an HTTP request into minimal semantic units.
+
+#     Args:
+#         req (RequestInfo): A RequestInfo object.
+
+#     Returns:
+#         list: A list of minimal semantic units.
+#     """
+#     parsed = urlparse(req.url)
+#     path_parts = parsed.path.split("/")
+
+#     def is_form_urlencoded(body):
+#         return bool(re.match(r"^[\w.%+]+=[\S]*", body))
+
+#     def is_multipart(body):
+#         return body.strip().startswith("---")
+
+#     url_list = ["/" + part for part in path_parts if part]
+#     query_list = parsed.query.split("&") if parsed.query else []
+
+#     # ---- Body ----
+#     body = req.body.strip()
+#     body = process_body(body)
+#     if body.startswith("{"):
+#         body_list = parse_custom_body(body)
+#     elif is_multipart(body):
+#         body_list = parse_multipart_body(body)
+#     elif is_form_urlencoded(body):
+#         body_list = body.split("&")
+#     else:
+#         body_list = []
+
+#     # ---- Headers (NEW) ----
+#     header_list = parse_headers(req.headers)
+
+#     # Remove empty query entries like "" produced by trailing ?
+#     if len(query_list) == 1 and query_list[0] == "":
+#         query_list = []
+
+#     group = [req.method] + url_list + query_list + body_list + header_list
+#     group = [item for item in group if item.strip()]
+#     return group
 
 def get_http_level_split(req: RequestInfo):
     """

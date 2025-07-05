@@ -121,33 +121,42 @@ def predict_request_with_tokeninfo(req, model, tokenizer, feature_method='text',
     current_part = []
     last_abnormal_index = None  # Tracks the last abnormal token index
 
-    for idx, prediction in enumerate(predictions, start=1):  # Start from 1 as the first token is skipped
-        if prediction == 1:  # Assuming 1 indicates abnormal
-            abnormal_tokens.append(http_token[idx])
-            if last_abnormal_index is None or idx == last_abnormal_index + 1:
-                current_part.append(http_token[idx])  # Add to the current abnormal part
+    for idx, prediction in enumerate(predictions, start=1):
+        token = http_token[idx]
+
+        if prediction == 1:  
+            abnormal_tokens.append(token)
+            
+            if last_abnormal_index is None:
+                current_part.append(token)
+            elif idx == last_abnormal_index + 1:
+                current_part.append(token)
             else:
                 if current_part:
-                    abnormal_http_parts.append(" ".join(current_part))  # Merge and store the current part
-                    current_part = [http_token[idx]]  # Start a new part
-            last_abnormal_index = idx  # Update the last abnormal token index
+                    merged = "".join(current_part)
+                    abnormal_http_parts.append(merged)
+                current_part = [token]
+            
+            last_abnormal_index = idx
         else:
             if current_part:
-                abnormal_http_parts.append(" ".join(current_part))  # Merge and store the current part
-                current_part = []  # Reset for the next part
+                merged = "".join(current_part)
+                abnormal_http_parts.append(merged)
+                current_part = []
 
-    # Add the last group of consecutive abnormal tokens (if any)
     if current_part:
-        abnormal_http_parts.append(" ".join(current_part))
+        merged = "".join(current_part)
+        abnormal_http_parts.append(merged)
+
 
     return {
         "tokens": http_token,
-        "predictions": [0] + predictions,  # Add a default prediction of 0 for the first token
+        "predictions": [0] + predictions, 
         "abnormal_tokens": abnormal_tokens,
         "abnormal_parts": abnormal_http_parts
     }
 
-
+from urllib.parse import urlparse, unquote_plus
 def evaluate_model_withlog(model, dataset_name, test_dataset, test_data_json, tokenizer, output_path, feature_method='text', k=10, emb_model=None):
     rec = Location_Metric_Recorder()
     data_path = os.path.join(output_path, "evaluation_data.txt")
@@ -174,7 +183,7 @@ def evaluate_model_withlog(model, dataset_name, test_dataset, test_data_json, to
                 precision, recall, f1_score, acc, hamming, jaccard_index = analyze_location_accuracy(predictions, location_ground_truth)
                 rec.append(precision, recall, f1_score, acc, hamming, jaccard_index)
 
-                original_text = f"Method:{test_item.method} URL:{test_item.url} Body:{test_item.body}".strip()
+                original_text = f"Method:{unquote_plus(test_item.method, encoding='utf-8', errors='replace')} URL:{unquote_plus(test_item.url, encoding='utf-8', errors='replace')} Body:{unquote_plus(test_item.body, encoding='utf-8', errors='replace')}".strip()
                 # Write details to the log file
                 log_file.write(f"Request {i} Evaluation\n")
                 log_file.write(f"Original Text:\n{original_text}\n")

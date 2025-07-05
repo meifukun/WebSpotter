@@ -68,9 +68,6 @@ def main():
         os.makedirs(args.outputdir)
 
     # Create output filenames
-    precision_not_one_file = os.path.join(args.outputdir, "precision_not_one.txt")
-    recall_not_one_file = os.path.join(args.outputdir, "recall_not_one.txt")
-    misclassified_file = os.path.join(args.outputdir, "misclassified.txt")
     targetfile = os.path.join(args.outputdir, "results.txt")  # Assuming 'results.txt' as a default output filename
 
     # Call the function to load datasets
@@ -81,10 +78,7 @@ def main():
     http_tokenizer_with_httpinfo = initialize_tokenizer(dataset_type, token)
     total_time_start = time.time()
 
-    with open(targetfile, "w") as file, \
-         open(precision_not_one_file, "w") as precision_file, \
-         open(recall_not_one_file, "w") as recall_file, \
-         open(misclassified_file, "w") as misclassified_file:
+    with open(targetfile, "w") as file:
 
         for i in tqdm(range(len(test_dataset))):
             # Evaluate malicious samples
@@ -131,15 +125,6 @@ def main():
                 
                 # Update counters and handle special cases for output
                 total_count += 1
-                if precision != 1:
-                    precision_not_one_count += 1
-                    write_data(precision_file, original_text, pred_label, pred_prob, test_Y[i], final_importance_scores, suspected_attacks, mean_score, std_dev, threshold, attacks, ulocation, precision, recall, f1_score, accurary, jaccard_index)
-                if recall != 1:
-                    recall_not_one_count += 1
-                    write_data(recall_file, original_text, pred_label, pred_prob, test_Y[i], final_importance_scores, suspected_attacks, mean_score, std_dev, threshold, attacks, ulocation, precision, recall, f1_score, accurary, jaccard_index)
-                if pred_label != label.item():
-                    misclassified_count += 1
-                    write_data(misclassified_file, original_text, pred_label, pred_prob, test_Y[i], final_importance_scores, suspected_attacks, mean_score, std_dev, threshold, attacks, ulocation, precision, recall, f1_score, accurary, jaccard_index)
 
         
     # Record total execution time and statistics
@@ -148,26 +133,23 @@ def main():
     print("Dataset:", dataset_type)
     print("Total Execution Time:", total_time_end - total_time_start)
     print("Total Count:", total_count)
-    print("Precision Not One Count:", precision_not_one_count)
-    print("Recall Not One Count:", recall_not_one_count)
-    print("Misclassified Count:", misclassified_count)
     
     # Evaluate performance metrics for the entire dataset
     avg_precision, avg_recall, avg_f1_score, avg_accurary, avg_jaccard_index = evaluate_dataset_performance(
         all_precision, all_recall, all_f1_scores, all_accurary, all_jaccard_index
     )
     
-    # Print evaluation results for the entire dataset
-    print(f"Average Precision: {avg_precision:.4f}")
-    print(f"Average Recall: {avg_recall:.4f}")
-    print(f"Average F1 Score: {avg_f1_score:.4f}")
-    print(f"Average Accuracy: {avg_accurary:.4f}")
-    print(f"Average Jaccard Index: {avg_jaccard_index:.4f}")
+    # # Print evaluation results for the entire dataset
+    # print(f"Average Precision: {avg_precision:.4f}")
+    # print(f"Average Recall: {avg_recall:.4f}")
+    # print(f"Average F1 Score: {avg_f1_score:.4f}")
+    # print(f"Average Accuracy: {avg_accurary:.4f}")
+    # print(f"Average Jaccard Index: {avg_jaccard_index:.4f}")
 
     # Export the test dataset with scores included
     test_dataset_withscore_path = os.path.join(outputdir, f"{test_path.split('/')[-1]}_withscore")
     test_dataset.dump_datset(test_dataset_withscore_path)
 
-    
+
 if __name__ == "__main__":
     main()

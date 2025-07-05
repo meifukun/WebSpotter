@@ -108,7 +108,7 @@ print("best result: ", rec.get_best())
 if writer:
     writer.add_hparams(hyperpara_dict, rec.get_best())
 
-model_save_name = f"textcnn-{args.max_len}-{args.dataset}-{args.emb_dim}-{args.dropout}-{args.seed}"
+model_save_name = f"textcnn-{args.max_len}-{args.dataset.upper()}-{args.emb_dim}-{args.dropout}-{args.seed}"
 
 model_save_path = os.path.join(args.tmp_model, f"{model_save_name}.pth")
 

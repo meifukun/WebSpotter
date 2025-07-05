@@ -136,7 +136,6 @@ def get_binary_dataset_plus(dataset, data_json, dataset_name, tokenizer, feature
     total_sample_size = int(len(dataset) * sample_rate)
 
     # Filter data points where the largest importance score is significantly larger than the second largest
-    threshold = 40  # Threshold for difference between the first and second largest scores
     indices_threshold = []
     for index, data in enumerate(data_json):
         importance_scores = data.get("importance_scores", [])
@@ -149,7 +148,7 @@ def get_binary_dataset_plus(dataset, data_json, dataset_name, tokenizer, feature
                 reverse=True
             )
             # Check if the difference between the top two scores exceeds the threshold
-            if len(scores) > 1 and (scores[0] - scores[1] >= threshold):
+            if len(scores) > 1 and (scores[0]  >= scores[1]*3):
                 indices_threshold.append(index)
 
     # Randomly sample indices based on the filtered results and required sample size
