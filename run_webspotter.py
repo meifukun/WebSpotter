@@ -26,7 +26,6 @@ DATASET_CONFIG = {
     "CVE": {"max_len": 700}
 }
 
-# Common hyperparameters from the paper
 EMBEDDING_DIM = 512        # Dimension of embedding vectors
 SAMPLE_RATE = 0.01         # Fraction of location-labeled data for training
 FEATURE_METHOD = "score_sort_with_textemb"  # Hybrid feature construction method
