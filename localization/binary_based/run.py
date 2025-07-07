@@ -14,7 +14,7 @@ import argparse
 import time
 parser = argparse.ArgumentParser()
 parser.add_argument('--feature_method',type=str, required=True, help="one of ['text', 'textemb', 'score', 'score_sort', 'score_sort_with_textemb']")
-parser.add_argument('--dataset', type=str, required=True, help="one of ['fpad', 'csic', 'pkdd', 'pocrest']")
+parser.add_argument('--dataset', type=str, required=True, help="one of ['fpad', 'csic', 'pkdd', 'cve']")
 parser.add_argument('--train_path',type=str, required=True)
 parser.add_argument('--test_path', type=str, required=True)
 parser.add_argument('--k', type=int, default=10, help="number of importance scores to use")
