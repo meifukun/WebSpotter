@@ -20,7 +20,7 @@ Below are the steps to reproduce the main results from the paper. The steps incl
 
 ### Train the Detection Model
 
-The first step is to train a detection model. A TextCNN model is used for this purpose, and the trained model will be saved in the tmp_model directory.
+The first step is to train a detection model. A TextCNN model is used for this purpose, and the trained model will be saved in the tmp_model directory. For the PKDD dataset, set --max_len to 2100 instead, as it includes HTTP headers 
 
 ```
 python classification/run.py --tmp_dir datasets/FPAD --tmp_model tmp_model --dataset fpad --max_len 700
