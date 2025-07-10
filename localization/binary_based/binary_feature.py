@@ -152,7 +152,20 @@ def get_binary_dataset_plus(dataset, data_json, dataset_name, tokenizer, feature
                 indices_threshold.append(index)
 
     # Randomly sample indices based on the filtered results and required sample size
-    sampled_indices = random.sample(indices_threshold, min(total_sample_size, len(indices_threshold)))
+    if len(indices_threshold) >= total_sample_size:
+        sampled_indices = random.sample(indices_threshold, total_sample_size)
+    else:
+        sampled_indices = indices_threshold.copy()
+        remaining_needed = total_sample_size - len(sampled_indices)
+        
+        remaining_indices = list(all_indices - set(indices_threshold))
+        
+        if remaining_needed > 0 and remaining_indices:
+            supplement_indices = random.sample(
+                remaining_indices, 
+                min(remaining_needed, len(remaining_indices))
+            )
+            sampled_indices.extend(supplement_indices)
 
     # Process the sampled indices to generate the binary dataset
     for index in tqdm(sampled_indices):
