@@ -157,7 +157,7 @@ def get_binary_dataset_plus(dataset, data_json, dataset_name, tokenizer, feature
     else:
         sampled_indices = indices_threshold.copy()
         remaining_needed = total_sample_size - len(sampled_indices)
-        
+        all_indices = set(range(len(dataset)))
         remaining_indices = list(all_indices - set(indices_threshold))
         
         if remaining_needed > 0 and remaining_indices:
